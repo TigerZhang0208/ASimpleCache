@@ -12,14 +12,14 @@
         jar="/Users/zhanghu/Desktop/code/AndroidCache/app/build/intermediates/incremental-classes/debug/classes.jar"
         jumboMode="false"
         revision="23.0.2"
-        sha1="c15c53ab413f450df232aedaff393a0f8f89efa8">
+        sha1="33b37844082758c65e8e879a3d6fc79e25ab1df7">
         <dex dex="/Users/zhanghu/Desktop/code/AndroidCache/app/build/intermediates/pre-dexed/debug/classes_da715c4a1dbeecd8b75666fd4fb2f2609fdce1e4.jar" />
     </item>
     <item
         jar="/Users/zhanghu/Desktop/code/AndroidCache/app/build/intermediates/incremental-runtimfe-classes/debug/instant-run.jar"
         jumboMode="false"
         revision="23.0.2"
-        sha1="b5f812abf545b2d1106821d8805408536336a47e">
+        sha1="655a84fad33dadbca84683e1b410eb355a1f04b5">
         <dex dex="/Users/zhanghu/Desktop/code/AndroidCache/app/build/intermediates/pre-dexed/debug/instant-run_7bddba1582f37c498f1035a1a4f98e0adceadb52.jar" />
     </item>
     <item

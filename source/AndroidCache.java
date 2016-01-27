@@ -15,42 +15,31 @@
  */
 package tech.zhiqu.cache;
 
-import java.io.BufferedReader;
-import java.io.BufferedWriter;
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
 import java.io.File;
-import java.io.FileOutputStream;
-import java.io.FileReader;
-import java.io.FileWriter;
-import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
-import java.io.RandomAccessFile;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 
 import org.json.JSONArray;
+import org.json.JSONException;
 import org.json.JSONObject;
 
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.drawable.Drawable;
-import android.util.Log;
 
 /**
  * by tiger007
  */
 public class AndroidCache {
-    private static final String DEFAULT_NAME = "AndroidCache";
+    private static final String DEFAULT_NAME = "Cache";
     public static final int TIME_HOUR = 60 * 60;
     public static final int TIME_DAY = TIME_HOUR * 24;
     private static final int MAX_SIZE = 1024 * 1024 * 50; // 50 MB
     private static final int MAX_COUNT = Integer.MAX_VALUE; // 不限制存放数据的数量
     private static Map<String, AndroidCache> mInstanceMap = new HashMap<>();
-    private CacheManager mCache;
+    private CacheService mCache;
 
 
     public static AndroidCache getInstance(Context ctx) {
@@ -62,7 +51,7 @@ public class AndroidCache {
         return getInstance(file, MAX_SIZE, MAX_COUNT);
     }
 
-    public static AndroidCache getInstance(File cacheDir) {
+    private static AndroidCache getInstance(File cacheDir) {
         return getInstance(cacheDir, MAX_SIZE, MAX_COUNT);
     }
 
@@ -89,24 +78,19 @@ public class AndroidCache {
             throw new RuntimeException("can't make dirs in "
                     + cacheDir.getAbsolutePath());
         }
-        mCache = new CacheManager(cacheDir, max_size, max_count);
+        mCache = new CacheService(cacheDir, max_size, max_count);
     }
 
     public boolean existsKey(String key) {
-        File[] cachedFiles = mCache.cacheDir.listFiles();
-        if (cachedFiles != null) {
-            for (File cachedFile : cachedFiles) {
-                String name = cachedFile.getName();
-                if (name != null && name.equals(key)) {
-                    return true;
-                }
-            }
-        }
-        return false;
+        return mCache.existsKey(key);
     }
 
     public ArrayList<String> findKeys(String key) {
         return mCache.findKeys(key);
+    }
+
+    public ArrayList<String> getValuesStartWithKey(String key) {
+        return mCache.getValueList(key);
     }
 
     // ============ String数据 读写 ==============
@@ -118,24 +102,7 @@ public class AndroidCache {
      * @param value 保存的String数据
      */
     public void put(String key, String value) {
-        File file = mCache.newFile(key);
-        BufferedWriter out = null;
-        try {
-            out = new BufferedWriter(new FileWriter(file), value.length());
-            out.write(value);
-        } catch (IOException e) {
-            e.printStackTrace();
-        } finally {
-            if (out != null) {
-                try {
-                    out.flush();
-                    out.close();
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-            }
-            mCache.put(file);
-        }
+        mCache.setKeyValue(key, value);
     }
 
     /**
@@ -146,7 +113,7 @@ public class AndroidCache {
      * @param saveTime 保存的时间，单位：秒
      */
     public void put(String key, String value, int saveTime) {
-        put(key, CacheUtils.newStringWithDateInfo(saveTime, value));
+        put(key, mCache.newStringWithDateInfo(saveTime, value));
     }
 
     /**
@@ -156,38 +123,7 @@ public class AndroidCache {
      * @return String 数据
      */
     public String getAsString(String key) {
-        File file = mCache.get(key);
-        if (!file.exists())
-            return null;
-        boolean removeFile = false;
-        BufferedReader in = null;
-        try {
-            in = new BufferedReader(new FileReader(file));
-            String readString = "";
-            String currentLine;
-            while ((currentLine = in.readLine()) != null) {
-                readString += currentLine;
-            }
-            if (!CacheUtils.isDue(readString)) {
-                return CacheUtils.clearDateInfo(readString);
-            } else {
-                removeFile = true;
-                return null;
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
-            return null;
-        } finally {
-            if (in != null) {
-                try {
-                    in.close();
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-            }
-            if (removeFile)
-                remove(key);
-        }
+        return mCache.getValue(key);
     }
 
     // ============= JSONObject 数据 读写 ==============
@@ -221,13 +157,13 @@ public class AndroidCache {
      */
     public JSONObject getAsJSONObject(String key) {
         String JSONString = getAsString(key);
+        JSONObject obj = null;
         try {
-            JSONObject obj = new JSONObject(JSONString);
-            return obj;
-        } catch (Exception e) {
-            Log.e("AndroidCache", "getAsJSONObject():" + e.getMessage());
-            return null;
+            obj = new JSONObject(JSONString);
+        } catch (JSONException e) {
+            e.printStackTrace();
         }
+        return obj;
     }
 
     // ============ JSONArray 数据 读写 =============
@@ -261,13 +197,13 @@ public class AndroidCache {
      */
     public JSONArray getAsJSONArray(String key) {
         String JSONString = getAsString(key);
+        JSONArray obj = null;
         try {
-            JSONArray obj = new JSONArray(JSONString);
-            return obj;
-        } catch (Exception e) {
-            Log.e("AndroidCache", "getAsJSONArray():" + e.getMessage());
-            return null;
+            obj = new JSONArray(JSONString);
+        } catch (JSONException e) {
+            e.printStackTrace();
         }
+        return obj;
     }
 
     // =======================================
@@ -281,24 +217,7 @@ public class AndroidCache {
      * @param value 保存的数据
      */
     public void put(String key, byte[] value) {
-        File file = mCache.newFile(key);
-        FileOutputStream out = null;
-        try {
-            out = new FileOutputStream(file);
-            out.write(value);
-        } catch (Exception e) {
-            e.printStackTrace();
-        } finally {
-            if (out != null) {
-                try {
-                    out.flush();
-                    out.close();
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-            }
-            mCache.put(file);
-        }
+        mCache.setKeyValueByte(key, value);
     }
 
     /**
@@ -309,7 +228,8 @@ public class AndroidCache {
      * @param saveTime 保存的时间，单位：秒
      */
     public void put(String key, byte[] value, int saveTime) {
-        put(key, CacheUtils.newByteArrayWithDateInfo(saveTime, value));
+        //put(key, CacheUtils.newByteArrayWithDateInfo(saveTime, value));
+        mCache.setKeyValueObject(key, value, saveTime);
     }
 
     /**
@@ -319,35 +239,7 @@ public class AndroidCache {
      * @return byte 数据
      */
     public byte[] getAsBinary(String key) {
-        RandomAccessFile RAFile = null;
-        boolean removeFile = false;
-        try {
-            File file = mCache.get(key);
-            if (!file.exists())
-                return null;
-            RAFile = new RandomAccessFile(file, "r");
-            byte[] byteArray = new byte[(int) RAFile.length()];
-            RAFile.read(byteArray);
-            if (!CacheUtils.isDue(byteArray)) {
-                return CacheUtils.clearDateInfo(byteArray);
-            } else {
-                removeFile = true;
-                return null;
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-            return null;
-        } finally {
-            if (RAFile != null) {
-                try {
-                    RAFile.close();
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-            }
-            if (removeFile)
-                remove(key);
-        }
+        return mCache.getBinary(key);
     }
 
     // =======================================
@@ -372,26 +264,10 @@ public class AndroidCache {
      * @param saveTime 保存的时间，单位：秒
      */
     public void put(String key, Serializable value, int saveTime) {
-        ByteArrayOutputStream baos = null;
-        ObjectOutputStream oos = null;
-        try {
-            baos = new ByteArrayOutputStream();
-            oos = new ObjectOutputStream(baos);
-            oos.writeObject(value);
-            byte[] data = baos.toByteArray();
-            if (saveTime != -1) {
-                put(key, data, saveTime);
-            } else {
-                put(key, data);
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-        } finally {
-            try {
-                oos.close();
-            } catch (IOException e) {
-            }
-        }
+
+        mCache.setKeyValueObject(key, value, saveTime);
+
+
     }
 
     /**
@@ -401,34 +277,7 @@ public class AndroidCache {
      * @return Serializable 数据
      */
     public Object getAsObject(String key) {
-        byte[] data = getAsBinary(key);
-        if (data != null) {
-            ByteArrayInputStream bais = null;
-            ObjectInputStream ois = null;
-            try {
-                bais = new ByteArrayInputStream(data);
-                ois = new ObjectInputStream(bais);
-                Object reObject = ois.readObject();
-                return reObject;
-            } catch (Exception e) {
-                e.printStackTrace();
-                return null;
-            } finally {
-                try {
-                    if (bais != null)
-                        bais.close();
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-                try {
-                    if (ois != null)
-                        ois.close();
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-            }
-        }
-        return null;
+        return mCache.getObject(key);
 
     }
 
@@ -443,7 +292,7 @@ public class AndroidCache {
      * @param value 保存的bitmap数据
      */
     public void put(String key, Bitmap value) {
-        put(key, CacheUtils.Bitmap2Bytes(value));
+        put(key, mCache.Bitmap2Bytes(value));
     }
 
     /**
@@ -454,7 +303,7 @@ public class AndroidCache {
      * @param saveTime 保存的时间，单位：秒
      */
     public void put(String key, Bitmap value, int saveTime) {
-        put(key, CacheUtils.Bitmap2Bytes(value), saveTime);
+        put(key, mCache.Bitmap2Bytes(value), saveTime);
     }
 
     /**
@@ -467,7 +316,7 @@ public class AndroidCache {
         if (getAsBinary(key) == null) {
             return null;
         }
-        return CacheUtils.Bytes2Bimap(getAsBinary(key));
+        return mCache.Bytes2Bimap(getAsBinary(key));
     }
 
     // =======================================
@@ -481,7 +330,7 @@ public class AndroidCache {
      * @param value 保存的drawable数据
      */
     public void put(String key, Drawable value) {
-        put(key, CacheUtils.drawable2Bitmap(value));
+        put(key, mCache.drawable2Bitmap(value));
     }
 
     /**
@@ -492,7 +341,7 @@ public class AndroidCache {
      * @param saveTime 保存的时间，单位：秒
      */
     public void put(String key, Drawable value, int saveTime) {
-        put(key, CacheUtils.drawable2Bitmap(value), saveTime);
+        put(key, mCache.drawable2Bitmap(value), saveTime);
     }
 
     /**
@@ -505,7 +354,7 @@ public class AndroidCache {
         if (getAsBinary(key) == null) {
             return null;
         }
-        return CacheUtils.bitmap2Drawable(CacheUtils.Bytes2Bimap(getAsBinary(key)));
+        return mCache.bitmap2Drawable(mCache.Bytes2Bimap(getAsBinary(key)));
     }
 
     /**
